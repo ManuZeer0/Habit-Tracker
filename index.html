@@ -1,0 +1,875 @@
+<html lang="it"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>HabitTracker</title>
+    
+    <!-- TAG PER TRASFORMARE L'APP IN UNA WEB APP (PWA) INSTALLABILE -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="HabitTracker">
+    <meta name="mobile-web-app-capable" content="yes">
+
+    <!-- ICONA COERENTE CON L'APP (VERDE FLUO + BLU SCURO) -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,&lt;svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'&gt;&lt;rect width='100' height='100' rx='24' fill='%23ccff00'/&gt;&lt;circle cx='50' cy='50' r='26' fill='none' stroke='%230f172a' stroke-width='6'/&gt;&lt;path d='M38 50 L46 58 L62 38' fill='none' stroke='%230f172a' stroke-width='8' stroke-linecap='round' stroke-linejoin='round'/&gt;&lt;/svg&gt;">
+    <link rel="apple-touch-icon" href="data:image/svg+xml;utf8,&lt;svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'&gt;&lt;rect width='100' height='100' rx='24' fill='%23ccff00'/&gt;&lt;circle cx='50' cy='50' r='26' fill='none' stroke='%230f172a' stroke-width='6'/&gt;&lt;path d='M38 50 L46 58 L62 38' fill='none' stroke='%230f172a' stroke-width='8' stroke-linecap='round' stroke-linejoin='round'/&gt;&lt;/svg&gt;">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        /* =========================================================================
+           CONFIGURAZIONE NUOVA PALETTE COLORI (VERDE FLUO + BLU SCURO)
+           ========================================================================= */
+        :root {
+            --primary: #0f172a;       /* Blu Scuro (Slate 900) - Colore principale dell'app */
+            --accent: #ccff00;        /* Verde Fluo - Colore dell'icona e degli accenti */
+            --bg-app: #f8fafc;        /* Sfondo dell'app */
+            --card-bg: #ffffff;       /* Sfondo dei box */
+            
+            --completed: #10b981;     /* Verde per 100% completato nel calendario */
+            --partial: #f59e0b;       /* Giallo per parziale */
+            --freeze: #38bdf8;        /* Azzurro per Freeze */
+            --uncompleted: #e2e8f0;   /* Grigio per non completato */
+        }
+
+        body {
+            -webkit-tap-highlight-color: transparent;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-app);
+        }
+        
+        .bg-primary { background-color: var(--primary); }
+        .text-primary { color: var(--primary); }
+        .border-primary { border-color: var(--primary); }
+        
+        .bg-accent { background-color: var(--accent); }
+        .text-accent { color: var(--accent); }
+        .border-accent { border-color: var(--accent); }
+    </style>
+</head>
+<body class="text-slate-800">
+
+    <div class="min-h-screen flex flex-col max-w-md mx-auto shadow-2xl border-x border-slate-100 bg-[var(--bg-app)]">
+        
+        <!-- --- HEADER --- -->
+        <header class="p-4 flex items-center justify-between border-b border-slate-100 sticky top-0 z-10 bg-white">
+            <div class="flex items-center gap-2">
+                <!-- Icona del brand coerente con l'icona web app -->
+                <div class="w-8 h-8 rounded-lg flex items-center justify-center bg-accent border border-slate-200">
+                    <i data-lucide="check" class="w-5 h-5 text-primary stroke-[3.5]"></i>
+                </div>
+                <span class="font-black text-xl tracking-tight text-primary">HabitTracker</span>
+            </div>
+            
+            <!-- Widget Streak e Freeze -->
+            <div class="flex items-center gap-2">
+                <div class="flex items-center gap-1 bg-amber-50 text-amber-700 px-3 py-1.5 rounded-full border border-amber-100 text-sm font-bold shadow-sm">
+                    <span>🔥</span> <span id="header-streak">0</span>
+                </div>
+                <div class="flex items-center gap-1 bg-sky-50 text-sky-700 px-3 py-1.5 rounded-full border border-sky-100 text-sm font-bold shadow-sm" title="Freeze rimasti per questo mese">
+                    <span>❄️</span> <span id="header-freezes">2</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- --- CONTENUTO ATTIVO --- -->
+        <main id="main-content" class="flex-1 overflow-y-auto p-4 pb-24">
+            <!-- Il contenuto dinamico delle schermate verrà inserito qui da JS -->
+        </main>
+
+        <!-- --- NAVBAR FOOTER (Mobile Sticky) --- -->
+        <nav class="border-t border-slate-100 p-3 flex justify-around items-center fixed bottom-0 left-0 right-0 max-w-md mx-auto z-10 bg-white">
+            <button onclick="changeTab('oggi')" id="btn-tab-oggi" class="flex flex-col items-center gap-1 p-2 rounded-xl transition-all text-slate-400">
+                <i data-lucide="check-square" class="w-6 h-6"></i>
+                <span class="text-[10px] font-bold">Oggi</span>
+            </button>
+            
+            <button onclick="changeTab('storico')" id="btn-tab-storico" class="flex flex-col items-center gap-1 p-2 rounded-xl transition-all text-slate-400">
+                <i data-lucide="calendar" class="w-6 h-6"></i>
+                <span class="text-[10px] font-bold">Storico</span>
+            </button>
+            
+            <button onclick="changeTab('goals')" id="btn-tab-goals" class="flex flex-col items-center gap-1 p-2 rounded-xl transition-all text-slate-400">
+                <i data-lucide="plus-circle" class="w-6 h-6"></i>
+                <span class="text-[10px] font-bold">Gestisci</span>
+            </button>
+        </nav>
+
+    </div>
+
+    <!-- --- LOGICA JAVASCRIPT --- -->
+    <script>
+        // --- STATO GLOBALE ---
+        let state = {
+            currentTab: 'oggi',
+            tasks: [],
+            history: {}, // "YYYY-MM-DD": { mood: '', note: '', completions: { taskId: valore }, freezeUsed: false }
+            streak: 0,
+            freezesRemaining: 2,
+            lastCheckDate: '',
+            
+            currentCalendarMonth: new Date().getMonth(),
+            currentCalendarYear: new Date().getFullYear(),
+
+            editingGoalId: null,
+
+            // Stato temporaneo per la creazione/modifica di un goal
+            newGoal: {
+                name: '',
+                type: 'binary',
+                cadence: 'daily',
+                selectedDays: [1,2,3,4,5] // Lun-Ven
+            },
+            selectedHistoryDay: null
+        };
+
+        // --- HELPER DI DATA LOCALE YYYY-MM-DD ---
+        function getLocalDateString(date) {
+            const offset = date.getTimezoneOffset();
+            const localDate = new Date(date.getTime() - (offset * 60 * 1000));
+            return localDate.toISOString().split('T')[0];
+        }
+
+        // --- CARICAMENTO E SALVATAGGIO IN LOCALSTORAGE ---
+        function loadState() {
+            const storedTasks = localStorage.getItem('ht_tasks');
+            const storedHistory = localStorage.getItem('ht_history');
+            const storedStreak = localStorage.getItem('ht_streak');
+            const storedFreezes = localStorage.getItem('ht_freezes');
+            const storedLastCheck = localStorage.getItem('ht_last_check');
+
+            if (storedTasks) state.tasks = JSON.parse(storedTasks);
+            if (storedHistory) state.history = JSON.parse(storedHistory);
+            if (storedStreak) state.streak = parseInt(storedStreak) || 0;
+            if (storedFreezes) state.freezesRemaining = parseInt(storedFreezes) || 2;
+            if (storedLastCheck) state.lastCheckDate = storedLastCheck;
+
+            state.currentCalendarMonth = new Date().getMonth();
+            state.currentCalendarYear = new Date().getFullYear();
+
+            syncStreakAndFreeze();
+        }
+
+        function saveState() {
+            localStorage.setItem('ht_tasks', JSON.stringify(state.tasks));
+            localStorage.setItem('ht_history', JSON.stringify(state.history));
+            localStorage.setItem('ht_streak', state.streak.toString());
+            localStorage.setItem('ht_freezes', state.freezesRemaining.toString());
+            localStorage.setItem('ht_last_check', state.lastCheckDate);
+            
+            document.getElementById('header-streak').innerText = state.streak;
+            document.getElementById('header-freezes').innerText = state.freezesRemaining;
+        }
+
+        // --- CALCOLO AUTOMATICO DELLO STREAK E DELLO STREAK FREEZE ---
+        function syncStreakAndFreeze() {
+            const today = new Date();
+            const todayStr = getLocalDateString(today);
+
+            if (!state.lastCheckDate) {
+                state.lastCheckDate = todayStr;
+                saveState();
+                return;
+            }
+
+            if (state.lastCheckDate === todayStr) {
+                saveState();
+                return;
+            }
+
+            const lastCheckDateObj = new Date(state.lastCheckDate);
+            
+            if (today.getMonth() !== lastCheckDateObj.getMonth() || today.getFullYear() !== lastCheckDateObj.getFullYear()) {
+                state.freezesRemaining = 2;
+            }
+
+            let checkPointer = new Date(lastCheckDateObj);
+            checkPointer.setDate(checkPointer.getDate() + 1);
+
+            const yesterday = new Date(today);
+            yesterday.setDate(yesterday.getDate() - 1);
+            const yesterdayStr = getLocalDateString(yesterday);
+
+            while (getLocalDateString(checkPointer) <= yesterdayStr) {
+                const checkDayStr = getLocalDateString(checkPointer);
+                const dayOfWeek = checkPointer.getDay() === 0 ? 7 : checkPointer.getDay();
+
+                const tasksForDay = state.tasks.filter(t => 
+                    t.cadence === 'daily' || (t.cadence === 'weekly' && t.selectedDays.includes(dayOfWeek))
+                );
+
+                if (tasksForDay.length > 0) {
+                    const dayEntry = state.history[checkDayStr] || { completions: {} };
+                    const completions = dayEntry.completions || {};
+                    const hasDoneAtLeastOne = Object.keys(completions).some(taskId => completions[taskId] > 0);
+
+                    if (!hasDoneAtLeastOne) {
+                        if (state.freezesRemaining > 0) {
+                            state.freezesRemaining--;
+                            state.history[checkDayStr] = {
+                                ...dayEntry,
+                                freezeUsed: true,
+                                mood: '❄️',
+                                note: 'Giorno congelato automaticamente!',
+                                completions: completions
+                            };
+                        } else {
+                            state.streak = 0;
+                        }
+                    }
+                }
+                checkPointer.setDate(checkPointer.getDate() + 1);
+            }
+
+            state.lastCheckDate = todayStr;
+            saveState();
+        }
+
+        // --- CAMBIO TAB ---
+        function changeTab(tabName) {
+            state.currentTab = tabName;
+            
+            if (tabName === 'storico') {
+                state.currentCalendarMonth = new Date().getMonth();
+                state.currentCalendarYear = new Date().getFullYear();
+                state.selectedHistoryDay = null;
+            }
+
+            if (tabName !== 'goals') {
+                cancelEdit();
+            }
+
+            ['oggi', 'storico', 'goals'].forEach(tab => {
+                const btn = document.getElementById(`btn-tab-${tab}`);
+                if (tab === tabName) {
+                    btn.style.color = 'var(--primary)';
+                    btn.classList.remove('text-slate-400');
+                    btn.classList.add('font-bold');
+                } else {
+                    btn.style.color = '';
+                    btn.classList.add('text-slate-400');
+                    btn.classList.remove('font-bold');
+                }
+            });
+
+            render();
+        }
+
+        function prevMonth() {
+            if (state.currentCalendarMonth === 0) {
+                state.currentCalendarMonth = 11;
+                state.currentCalendarYear--;
+            } else {
+                state.currentCalendarMonth--;
+            }
+            state.selectedHistoryDay = null;
+            render();
+        }
+
+        function nextMonth() {
+            if (state.currentCalendarMonth === 11) {
+                state.currentCalendarMonth = 0;
+                state.currentCalendarYear++;
+            } else {
+                state.currentCalendarMonth++;
+            }
+            state.selectedHistoryDay = null;
+            render();
+        }
+
+        // --- CONTROLLER EVENTI SCHERMATA OGGI ---
+        function setMood(emoji) {
+            const todayStr = getLocalDateString(new Date());
+            if (!state.history[todayStr]) state.history[todayStr] = { mood: '', note: '', completions: {}, freezeUsed: false };
+            state.history[todayStr].mood = emoji;
+            saveState();
+            render();
+        }
+
+        function updateNote(text) {
+            const todayStr = getLocalDateString(new Date());
+            if (!state.history[todayStr]) state.history[todayStr] = { mood: '', note: '', completions: {}, freezeUsed: false };
+            state.history[todayStr].note = text;
+            saveState();
+        }
+
+        function toggleBinaryTask(taskId) {
+            const todayStr = getLocalDateString(new Date());
+            if (!state.history[todayStr]) state.history[todayStr] = { mood: '', note: '', completions: {}, freezeUsed: false };
+            
+            const completions = state.history[todayStr].completions;
+            const prevVal = completions[taskId] || 0;
+            const newVal = prevVal === 1 ? 0 : 1;
+            completions[taskId] = newVal;
+
+            const wasActiveToday = Object.values(completions).some(v => v > 0 && v !== newVal);
+            const isActiveNow = Object.values(completions).some(v => v > 0);
+
+            if (!wasActiveToday && isActiveNow) {
+                state.streak++;
+            } else if (wasActiveToday && !isActiveNow) {
+                state.streak = Math.max(0, state.streak - 1);
+            }
+
+            saveState();
+            render();
+        }
+
+        function updateProgressiveTask(taskId, val) {
+            const todayStr = getLocalDateString(new Date());
+            if (!state.history[todayStr]) state.history[todayStr] = { mood: '', note: '', completions: {}, freezeUsed: false };
+            
+            const completions = state.history[todayStr].completions;
+            const prevVal = completions[taskId] || 0;
+            completions[taskId] = parseInt(val);
+
+            const wasActiveToday = Object.keys(completions).some(id => id !== taskId && completions[id] > 0) || prevVal > 0;
+            const isActiveNow = Object.values(completions).some(v => v > 0);
+
+            if (!wasActiveToday && isActiveNow) {
+                state.streak++;
+            } else if (wasActiveToday && !isActiveNow) {
+                state.streak = Math.max(0, state.streak - 1);
+            }
+
+            saveState();
+            document.getElementById(`percentage-label-${taskId}`).innerText = val + '%';
+        }
+
+        // --- CONTROLLER EVENTI GESTIONE E MODIFICA GOALS ---
+        function setGoalField(field, value) {
+            state.newGoal[field] = value;
+            render();
+        }
+
+        function toggleGoalDay(dayNum) {
+            let days = [...state.newGoal.selectedDays];
+            if (days.includes(dayNum)) {
+                days = days.filter(d => d !== dayNum);
+            } else {
+                days.push(dayNum);
+            }
+            state.newGoal.selectedDays = days.sort();
+            render();
+        }
+
+        function startEditGoal(id) {
+            const task = state.tasks.find(t => t.id === id);
+            if (!task) return;
+
+            state.editingGoalId = id;
+            state.newGoal = {
+                name: task.name,
+                type: task.type,
+                cadence: task.cadence,
+                selectedDays: [...task.selectedDays]
+            };
+
+            render();
+
+            setTimeout(() => {
+                const input = document.getElementById('goal-name-input');
+                if (input) {
+                    input.focus();
+                    input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }, 80);
+        }
+
+        function cancelEdit() {
+            state.editingGoalId = null;
+            state.newGoal = { name: '', type: 'binary', cadence: 'daily', selectedDays: [1,2,3,4,5] };
+            render();
+        }
+
+        function saveGoal() {
+            if (!state.newGoal.name.trim()) return;
+            
+            const cadenceDays = state.newGoal.cadence === 'weekly' ? state.newGoal.selectedDays : [1,2,3,4,5,6,7];
+
+            if (state.editingGoalId) {
+                state.tasks = state.tasks.map(task => {
+                    if (task.id === state.editingGoalId) {
+                        return {
+                            ...task,
+                            name: state.newGoal.name,
+                            type: state.newGoal.type,
+                            cadence: state.newGoal.cadence,
+                            selectedDays: cadenceDays
+                        };
+                    }
+                    return task;
+                });
+                state.editingGoalId = null;
+            } else {
+                const goal = {
+                    id: Date.now().toString(),
+                    name: state.newGoal.name,
+                    type: state.newGoal.type,
+                    cadence: state.newGoal.cadence,
+                    selectedDays: cadenceDays
+                };
+                state.tasks.push(goal);
+            }
+            
+            state.newGoal = { name: '', type: 'binary', cadence: 'daily', selectedDays: [1,2,3,4,5] };
+            saveState();
+            changeTab('oggi');
+        }
+
+        function deleteGoal(id) {
+            if (confirm("Eliminare definitivamente questa abitudine?")) {
+                state.tasks = state.tasks.filter(t => t.id !== id);
+                if (state.editingGoalId === id) {
+                    cancelEdit();
+                }
+                saveState();
+                render();
+            }
+        }
+
+        function showDayDetail(dateStr) {
+            const dateObj = new Date(dateStr);
+            const dayOfWeek = dateObj.getDay() === 0 ? 7 : dateObj.getDay();
+            
+            const dayTasks = state.tasks.filter(t => 
+                t.cadence === 'daily' || (t.cadence === 'weekly' && t.selectedDays.includes(dayOfWeek))
+            );
+
+            state.selectedHistoryDay = {
+                dateStr: dateStr,
+                dayTasks: dayTasks,
+                metadata: state.history[dateStr] || null
+            };
+            render();
+        }
+
+        function getDayStatus(dateStr, dayTasks) {
+            const dayEntry = state.history[dateStr];
+            if (!dayEntry) return 'none';
+            if (dayEntry.freezeUsed) return 'freeze';
+            if (dayTasks.length === 0) return 'none';
+
+            const completions = dayEntry.completions || {};
+            const maxPossible = dayTasks.length * 100;
+            const actualProgress = dayTasks.reduce((acc, task) => {
+                const comp = completions[task.id] || 0;
+                return acc + (task.type === 'binary' ? comp * 100 : comp);
+            }, 0);
+
+            if (actualProgress === 0) return 'none';
+            if (actualProgress >= maxPossible) return 'completed';
+            return 'partial';
+        }
+
+        // --- MOTORE DI RENDERING ---
+        function render() {
+            const container = document.getElementById('main-content');
+            
+            if (state.currentTab === 'oggi') {
+                const todayStr = getLocalDateString(new Date());
+                const dayOfWeek = new Date().getDay() === 0 ? 7 : new Date().getDay();
+                const todayTasks = state.tasks.filter(t => 
+                    t.cadence === 'daily' || (t.cadence === 'weekly' && t.selectedDays.includes(dayOfWeek))
+                );
+                const todayMetadata = state.history[todayStr] || { mood: '', note: '', completions: {}, freezeUsed: false };
+
+                let tasksHTML = '';
+                if (todayTasks.length === 0) {
+                    tasksHTML = `
+                        <div class="text-center p-8 rounded-2xl border-2 border-dashed border-slate-200 text-slate-400 bg-white">
+                            <i data-lucide="calendar-days" class="w-8 h-8 mx-auto mb-2 text-slate-300"></i>
+                            <p class="font-medium text-sm">Nessun task programmato per oggi.</p>
+                            <button onclick="changeTab('goals')" class="text-xs mt-2 underline text-primary font-bold">Crea una nuova abitudine</button>
+                        </div>
+                    `;
+                } else {
+                    todayTasks.forEach(task => {
+                        const val = todayMetadata.completions?.[task.id] || 0;
+                        const isCompleted = val > 0;
+                        
+                        let inputWidget = '';
+                        if (task.type === 'binary') {
+                            const isCheck = val === 1;
+                            inputWidget = `
+                                <button onclick="toggleBinaryTask('${task.id}')" class="w-full flex items-center justify-between p-3 rounded-xl border transition-all active:scale-[0.99]" 
+                                    style="border-color: ${isCheck ? 'var(--completed)' : '#cbd5e1'}; background-color: ${isCheck ? 'rgba(16, 185, 129, 0.05)' : 'transparent'}">
+                                    <span class="text-sm font-semibold" style="color: ${isCheck ? 'var(--completed)' : '#64748b'}">
+                                        ${isCheck ? 'Completato!' : 'Segna come completato'}
+                                    </span>
+                                    <div class="w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all" 
+                                        style="border-color: ${isCheck ? 'var(--completed)' : '#cbd5e1'}; background-color: ${isCheck ? 'var(--completed)' : 'transparent'}">
+                                        ${isCheck ? '<i data-lucide="check" class="w-4 h-4 text-white"></i>' : ''}
+                                    </div>
+                                </button>
+                            `;
+                        } else {
+                            inputWidget = `
+                                <div class="space-y-2">
+                                    <div class="flex justify-between items-center text-xs font-bold ${isCompleted ? 'text-slate-800' : 'text-slate-400'}">
+                                        <span>Avanzamento</span>
+                                        <span id="percentage-label-${task.id}">${val}%</span>
+                                    </div>
+                                    <input type="range" min="0" max="100" step="5" value="${val}" 
+                                        oninput="updateProgressiveTask('${task.id}', this.value)" 
+                                        class="w-full h-2 rounded-lg bg-slate-100 appearance-none cursor-pointer accent-indigo-500" />
+                                </div>
+                            `;
+                        }
+
+                        tasksHTML += `
+                            <div class="rounded-2xl p-4 shadow-sm border border-slate-100 bg-white flex flex-col gap-3">
+                                <div class="flex items-center justify-between">
+                                    <span class="font-bold text-slate-800 text-base">${task.name}</span>
+                                    <span class="text-[10px] font-extrabold tracking-wider px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">
+                                        ${task.type === 'binary' ? '✅' : '➡️ Progressivo'}
+                                    </span>
+                                </div>
+                                ${inputWidget}
+                            </div>
+                        `;
+                    });
+                }
+
+                container.innerHTML = `
+                    <div class="space-y-6">
+                        <!-- Post-it & Mood Section -->
+                        <div class="rounded-2xl p-5 shadow-sm border border-slate-100 relative overflow-hidden bg-white">
+                            <div class="absolute top-0 left-0 w-full h-1.5 bg-primary"></div>
+                            <h3 class="font-extrabold text-base text-slate-700 mb-3">Come va la giornata oggi?</h3>
+                            
+                            <!-- NUOVE EMOJIS RICHIESTE (😩 🙁 😐 😊 😁) -->
+                            <div class="flex justify-between gap-1 mb-4">
+                                ${['😩', '🙁', '😐', '😊', '😁'].map(emoji => {
+                                    const isSelected = todayMetadata.mood === emoji;
+                                    return `
+                                        <button onclick="setMood('${emoji}')" class="text-3xl p-2 rounded-xl transition-transform active:scale-95 border-2 ${isSelected ? 'bg-indigo-50 border-indigo-200 scale-110' : 'border-transparent'}">
+                                            ${emoji}
+                                        </button>
+                                    `;
+                                }).join('')}
+                            </div>
+
+                            <!-- Post-it Note -->
+                            <textarea oninput="updateNote(this.value)" placeholder="Scrivi un post-it su questa giornata..." rows="2" 
+                                class="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-sm bg-amber-50/20 placeholder-slate-400"
+                                style="border-style: dashed;">${todayMetadata.note || ''}</textarea>
+                        </div>
+
+                        <!-- Lista Task: TESTO AGGIORNATO A "To-Do di oggi:" -->
+                        <div class="space-y-3">
+                            <div class="flex justify-between items-center">
+                                <h2 class="text-lg font-black text-primary tracking-tight uppercase">To-Do di oggi:</h2>
+                                <span class="text-[11px] uppercase tracking-wider font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded-md">
+                                    ${new Date().toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' })}
+                                </span>
+                            </div>
+                            ${tasksHTML}
+                        </div>
+                    </div>
+                `;
+            }
+
+            else if (state.currentTab === 'storico') {
+                const year = state.currentCalendarYear;
+                const month = state.currentCalendarMonth;
+                
+                const firstDayOfMonth = new Date(year, month, 1);
+                const lastDayOfMonth = new Date(year, month + 1, 0);
+                const daysInMonth = lastDayOfMonth.getDate();
+                
+                let startDayOfWeek = firstDayOfMonth.getDay();
+                if (startDayOfWeek === 0) startDayOfWeek = 7;
+
+                let gridHTML = '';
+                for (let i = 1; i < startDayOfWeek; i++) {
+                    gridHTML += '<div></div>';
+                }
+
+                for (let d = 1; d <= daysInMonth; d++) {
+                    const dateObj = new Date(year, month, d);
+                    const dateStr = getLocalDateString(dateObj);
+                    
+                    const dayOfWeek = dateObj.getDay() === 0 ? 7 : dateObj.getDay();
+                    const dayTasks = state.tasks.filter(t => 
+                        t.cadence === 'daily' || (t.cadence === 'weekly' && t.selectedDays.includes(dayOfWeek))
+                    );
+
+                    const status = getDayStatus(dateStr, dayTasks);
+                    const meta = state.history[dateStr];
+
+                    let borderStyle = 'border-color: var(--uncompleted); border-width: 1px;';
+                    let bgStyle = 'text-slate-600';
+                    let labelMood = meta?.mood ? `<span class="absolute -bottom-1.5 text-[8px]">${meta.mood}</span>` : '';
+
+                    if (status === 'completed') {
+                        borderStyle = 'border-color: var(--completed); border-width: 2.5px;';
+                        bgStyle = 'font-bold text-slate-900';
+                    } else if (status === 'partial') {
+                        borderStyle = 'border-color: var(--partial); border-width: 2.5px;';
+                        bgStyle = 'font-bold text-slate-900';
+                    } else if (status === 'freeze') {
+                        borderStyle = 'border-color: var(--freeze); border-width: 2.5px; background-color: rgba(56, 189, 248, 0.1);';
+                        bgStyle = 'font-bold text-sky-700';
+                    }
+
+                    gridHTML += `
+                        <button onclick="showDayDetail('${dateStr}')" class="aspect-square flex flex-col items-center justify-center relative rounded-full hover:bg-slate-50 active:scale-95 mx-auto w-10 h-10 transition-all" style="${borderStyle}">
+                            <span class="text-sm ${bgStyle}">${d}</span>
+                            ${labelMood}
+                        </button>
+                    `;
+                }
+
+                const monthName = new Date(year, month).toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
+
+                let detailHTML = '';
+                if (state.selectedHistoryDay) {
+                    const day = state.selectedHistoryDay;
+                    const dateObj = new Date(day.dateStr);
+                    const readableDate = dateObj.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
+                    
+                    let taskListHTML = '';
+                    if (day.dayTasks.length === 0) {
+                        taskListHTML = '<p class="text-xs text-slate-400 italic">Nessuna abitudine programmata per questo giorno.</p>';
+                    } else {
+                        day.dayTasks.forEach(task => {
+                            const val = day.metadata?.completions?.[task.id] || 0;
+                            const isDone = val > 0;
+                            taskListHTML += `
+                                <div class="flex items-center justify-between text-sm p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                                    <span class="font-bold text-slate-700">${task.name}</span>
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-xs font-semibold text-slate-400">${task.type === 'binary' ? (isDone ? 'Sì' : 'No') : `${val}%`}</span>
+                                        <div class="w-5 h-5 rounded-full flex items-center justify-center text-white ${isDone ? 'bg-emerald-500' : 'bg-slate-200'}">
+                                            <i data-lucide="${isDone ? 'check' : 'x'}" class="w-3.5 h-3.5"></i>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                    }
+
+                    detailHTML = `
+                        <div class="rounded-2xl p-5 shadow-sm border border-slate-100 space-y-4 bg-white animate-fadeIn">
+                            <div class="flex justify-between items-start">
+                                <div>
+                                    <h3 class="font-black text-slate-800 text-lg">Resoconto Giornaliero</h3>
+                                    <p class="text-xs text-slate-400 font-bold uppercase">${readableDate}</p>
+                                </div>
+                                <button onclick="state.selectedHistoryDay = null; render();" class="text-slate-400 hover:text-slate-600 p-1">
+                                    <i data-lucide="x" class="w-5 h-5"></i>
+                                </button>
+                            </div>
+
+                            <div class="bg-slate-50 p-4 rounded-xl space-y-3">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xs font-bold uppercase text-slate-400">Stato Umore:</span>
+                                    <span class="text-2xl">${day.metadata?.mood || 'Nessuno'}</span>
+                                </div>
+                                <div class="border-t border-slate-200/60 pt-2">
+                                    <span class="text-[10px] font-bold uppercase text-slate-400 block mb-1">Post-it scritto:</span>
+                                    <p class="text-sm italic text-slate-700 bg-amber-50/50 p-3 rounded-lg border border-dashed border-slate-200">
+                                        ${day.metadata?.note || 'Nessuna nota scritta.'}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="space-y-2">
+                                <h4 class="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Abitudini Verificate</h4>
+                                ${taskListHTML}
+                            </div>
+                        </div>
+                    `;
+                }
+
+                container.innerHTML = `
+                    <div class="space-y-6">
+                        <div class="rounded-2xl p-5 shadow-sm border border-slate-100 bg-white">
+                            
+                            <div class="flex items-center justify-between mb-4 border-b border-slate-50 pb-3">
+                                <button onclick="prevMonth()" class="p-1.5 text-slate-400 hover:bg-slate-50 hover:text-slate-700 rounded-lg transition-all">
+                                    <i data-lucide="chevron-left" class="w-5 h-5"></i>
+                                </button>
+                                <h2 class="text-sm font-black tracking-wider text-slate-600 uppercase">
+                                    ${monthName}
+                                </h2>
+                                <button onclick="nextMonth()" class="p-1.5 text-slate-400 hover:bg-slate-50 hover:text-slate-700 rounded-lg transition-all">
+                                    <i data-lucide="chevron-right" class="w-5 h-5"></i>
+                                </button>
+                            </div>
+
+                            <div class="grid grid-cols-7 text-center text-xs font-black text-slate-300 mb-4">
+                                <div>L</div><div>M</div><div>M</div><div>G</div><div>V</div><div>S</div><div>D</div>
+                            </div>
+
+                            <div class="grid grid-cols-7 gap-y-4 gap-x-1">
+                                ${gridHTML}
+                            </div>
+                        </div>
+
+                        <div class="flex justify-around items-center text-[10px] font-extrabold uppercase tracking-wide text-slate-400 bg-white p-3 rounded-xl border border-slate-100">
+                            <div class="flex items-center gap-1.5">
+                                <div class="w-3 h-3 rounded-full border-[2.5px]" style="border-color: var(--completed)"></div>
+                                <span>Fatto</span>
+                            </div>
+                            <div class="flex items-center gap-1.5">
+                                <div class="w-3 h-3 rounded-full border-[2.5px]" style="border-color: var(--partial)"></div>
+                                <span>Parziale</span>
+                            </div>
+                            <div class="flex items-center gap-1.5">
+                                <div class="w-3 h-3 rounded-full border-[2.5px] bg-sky-50" style="border-color: var(--freeze)"></div>
+                                <span>Freeze</span>
+                            </div>
+                        </div>
+
+                        ${detailHTML}
+                    </div>
+                `;
+            }
+
+            else if (state.currentTab === 'goals') {
+                const daysOfWeekLetters = ['L', 'M', 'M', 'G', 'V', 'S', 'D'];
+                
+                let daysSelectionHTML = '';
+                if (state.newGoal.cadence === 'weekly') {
+                    daysSelectionHTML = `
+                        <div class="space-y-2">
+                            <label class="text-xs font-bold text-slate-500 uppercase">Seleziona i giorni di attività</label>
+                            <div class="flex justify-between gap-1">
+                                ${daysOfWeekLetters.map((dName, idx) => {
+                                    const dNum = idx + 1;
+                                    const isSel = state.newGoal.selectedDays.includes(dNum);
+                                    return `
+                                        <button onclick="toggleGoalDay(${dNum})" type="button" 
+                                            class="w-10 h-10 rounded-full text-xs font-black transition-all ${isSel ? 'bg-primary text-white shadow-md' : 'bg-slate-100 text-slate-400'}">
+                                            ${dName}
+                                        </button>
+                                    `;
+                                }).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
+
+                // TESTO AGGIORNATO A "Le mie abitudini attive:"
+                let activeGoalsListHTML = '';
+                if (state.tasks.length === 0) {
+                    activeGoalsListHTML = '<p class="text-xs text-slate-400 italic">Non hai ancora creato nessuna abitudine.</p>';
+                } else {
+                    state.tasks.forEach(task => {
+                        const freqLabel = task.cadence === 'daily' ? 'Ogni giorno' : `Specifico: ${task.selectedDays.map(d => ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'][d-1]).join(', ')}`;
+                        activeGoalsListHTML += `
+                            <div class="p-4 rounded-xl shadow-sm border border-slate-100 bg-white flex items-center justify-between">
+                                <div>
+                                    <h4 class="font-bold text-sm text-slate-800">${task.name}</h4>
+                                    <p class="text-[10px] text-slate-400 font-bold uppercase mt-0.5">${freqLabel}</p>
+                                </div>
+                                <div class="flex items-center gap-1">
+                                    <button onclick="startEditGoal('${task.id}')" class="p-2 text-slate-400 hover:text-primary hover:bg-indigo-50/50 rounded-lg transition-all" title="Modifica">
+                                        <i data-lucide="edit-3" class="w-5 h-5"></i>
+                                    </button>
+                                    <button onclick="deleteGoal('${task.id}')" class="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-all" title="Elimina">
+                                        <i data-lucide="trash-2" class="w-5 h-5"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                    });
+                }
+
+                const isEditing = state.editingGoalId !== null;
+                // TESTO AGGIORNATO A "Salva abitudine"
+                const submitButtonText = isEditing ? 'Aggiorna abitudine' : 'Salva abitudine';
+                const editHeader = isEditing ? 'Modifica la tua abitudine' : 'Crea una nuova abitudine';
+
+                let cancelEditButtonHTML = '';
+                if (isEditing) {
+                    cancelEditButtonHTML = `
+                        <button onclick="cancelEdit()" class="w-full py-2.5 bg-slate-100 text-slate-500 hover:bg-slate-200 font-bold rounded-xl transition-all text-xs">
+                            Annulla Modifica
+                        </button>
+                    `;
+                }
+
+                container.innerHTML = `
+                    <div class="space-y-6">
+                        <!-- Form di creazione / modifica -->
+                        <div class="rounded-2xl p-5 shadow-sm border ${isEditing ? 'border-primary ring-2 ring-primary/10' : 'border-slate-100'} space-y-4 bg-white">
+                            <div class="flex justify-between items-center">
+                                <h2 class="text-lg font-black text-slate-800 tracking-tight">${editHeader}</h2>
+                                ${isEditing ? '<span class="text-[10px] font-extrabold uppercase bg-accent text-primary px-2 py-0.5 rounded-full">Modalità Modifica</span>' : ''}
+                            </div>
+                            
+                            <!-- Input Nome: ETICHETTA AGGIORNATA A "Nuova abitudine" -->
+                            <div class="space-y-1">
+                                <label class="text-xs font-bold text-slate-500 uppercase">Nuova abitudine</label>
+                                <input id="goal-name-input" type="text" placeholder="Es. Bere 2L d'acqua, Meditazione..." 
+                                    value="${state.newGoal.name}" oninput="state.newGoal.name = this.value"
+                                    class="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-sm font-semibold bg-slate-50/50" />
+                            </div>
+
+                            <!-- Selezione Tipologia: ETICHETTA "Completamento", BOTTONI "✅" E "➡️ Progressivo" -->
+                            <div class="space-y-1">
+                                <label class="text-xs font-bold text-slate-500 uppercase">Completamento</label>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <button onclick="setGoalField('type', 'binary')" class="p-3 rounded-xl text-sm font-bold border transition-all ${state.newGoal.type === 'binary' ? 'border-primary bg-accent/25 text-primary' : 'border-slate-200 hover:bg-slate-50 text-slate-500'}">
+                                        ✅
+                                    </button>
+                                    <button onclick="setGoalField('type', 'progressive')" class="p-3 rounded-xl text-xs font-extrabold border transition-all ${state.newGoal.type === 'progressive' ? 'border-primary bg-accent/25 text-primary' : 'border-slate-200 hover:bg-slate-50 text-slate-500'}">
+                                        ➡️ Progressivo
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Selezione Frequenza -->
+                            <div class="space-y-1">
+                                <label class="text-xs font-bold text-slate-500 uppercase">Frequenza</label>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <button onclick="setGoalField('cadence', 'daily')" class="p-3 rounded-xl text-xs font-bold border transition-all ${state.newGoal.cadence === 'daily' ? 'border-primary bg-accent/25 text-primary' : 'border-slate-200 hover:bg-slate-50 text-slate-500'}">
+                                        Ogni giorno
+                                    </button>
+                                    <button onclick="setGoalField('cadence', 'weekly')" class="p-3 rounded-xl text-xs font-bold border transition-all ${state.newGoal.cadence === 'weekly' ? 'border-primary bg-accent/25 text-primary' : 'border-slate-200 hover:bg-slate-50 text-slate-500'}">
+                                        Giorni specifici
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Mostra giorni se settimanale -->
+                            ${daysSelectionHTML}
+
+                            <!-- Pulsante Salva: AGGIORNATO AL COLORE ACCENT (VERDE FLUO) CON TESTO PRIMARIO (BLU SCURO) -->
+                            <div class="space-y-2 pt-2">
+                                <button onclick="saveGoal()" class="w-full py-3.5 bg-accent text-primary font-black rounded-xl active:scale-[0.98] transition-all text-sm shadow-md border border-slate-200">
+                                    ${submitButtonText}
+                                </button>
+                                ${cancelEditButtonHTML}
+                            </div>
+                        </div>
+
+                        <!-- Elenco Goals: TESTO AGGIORNATO A "Le mie abitudini attive:" -->
+                        <div class="space-y-3">
+                            <h3 class="text-base font-black text-primary uppercase tracking-wide">Le mie abitudini attive:</h3>
+                            <div class="space-y-2">
+                                ${activeGoalsListHTML}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            if (window.lucide) {
+                window.lucide.createIcons();
+            }
+        }
+
+        // --- AVVIO APPLICAZIONE ---
+        window.onload = function() {
+            loadState();
+            changeTab('oggi');
+        };
+    </script>
+
+</body></html>
