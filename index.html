@@ -1,0 +1,804 @@
+<html lang="it"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Habit Tracker</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin=""></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin=""></script>
+    <!-- Babel per JSX nel browser -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        /* Blocco di configurazione per il comportamento mobile */
+        body {
+            -webkit-tap-highlight-color: transparent;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        /* Custom scrollbar minima */
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 selection:bg-indigo-100">
+
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        // =========================================================================
+        // CONFIGURAZIONE TEMA E COLORI ESADECIMALI (Modificali liberamente qui!)
+        // =========================================================================
+        const THEME = {
+            primary: '#6366f1',       // Colore Primario (Indigo 500)
+            primaryDark: '#4f46e5',   // Colore Primario Dark (Indigo 600)
+            bgApp: '#f8fafc',         // Sfondo dell'applicazione (Slate 50)
+            cardBg: '#ffffff',        // Sfondo dei Post-it e delle schede
+            
+            // Colori Stati Calendario / Task
+            colorCompleted: '#10b981', // Verde per 100% completato
+            colorPartial: '#f59e0b',   // Giallo/Arancio per completato parzialmente (>0%)
+            colorFreeze: '#38bdf8',    // Ghiaccio/Azzurro per Streak Freeze usato
+            colorUncompleted: '#e2e8f0'// Grigio per 0% completato
+        };
+
+        // Componente Icona generica per usare Lucide in React CDN
+        const Icon = ({ name, className = "w-5 h-5", ...props }) => {
+            useEffect(() => {
+                if (window.lucide) {
+                    window.lucide.createIcons();
+                }
+            });
+            return <i data-lucide={name} class={`${className}`} {...props}></i>;
+        };
+
+        // Helper per formattare la data YYYY-MM-DD in modo locale
+        const getLocalDateString = (date) => {
+            const offset = date.getTimezoneOffset();
+            const localDate = new Date(date.getTime() - (offset * 60 * 1000));
+            return localDate.toISOString().split('T')[0];
+        };
+
+        function App() {
+            // --- STATO DELL'APPLICAZIONE ---
+            const [currentTab, setCurrentTab] = useState('oggi'); // 'oggi', 'storico', 'goals'
+            const [tasks, setTasks] = useState([]);
+            const [history, setHistory] = useState({}); // Struttura: { "YYYY-MM-DD": { mood: '', note: '', completions: { taskId: valore }, freezeUsed: false } }
+            const [streak, setStreak] = useState(0);
+            const [freezesRemaining, setFreezesRemaining] = useState(2);
+            const [lastCheckDate, setLastCheckDate] = useState('');
+
+            // Stati per la creazione di un nuovo Goal
+            const [newGoalName, setNewGoalName] = useState('');
+            const [newGoalType, setNewGoalType] = useState('binary'); // 'binary' o 'progressive'
+            const [newGoalCadence, setNewGoalCadence] = useState('daily'); // 'daily' o 'weekly'
+            const [selectedDays, setSelectedDays] = useState([1,2,3,4,5]); // 1=Lun, 7=Dom (Standard ISO)
+
+            // Stato per visualizzare i dettagli di un giorno nel calendario
+            const [selectedHistoryDay, setSelectedHistoryDay] = useState(null);
+
+            // Caricamento dati iniziale da LocalStorage
+            useEffect(() => {
+                const storedTasks = localStorage.getItem('ht_tasks');
+                const storedHistory = localStorage.getItem('ht_history');
+                const storedStreak = localStorage.getItem('ht_streak');
+                const storedFreezes = localStorage.getItem('ht_freezes');
+                const storedLastCheck = localStorage.getItem('ht_last_check');
+
+                if (storedTasks) setTasks(JSON.parse(storedTasks));
+                if (storedHistory) setHistory(JSON.parse(storedHistory));
+                if (storedStreak) setStreak(parseInt(storedStreak) || 0);
+                if (storedFreezes) setFreezesRemaining(parseInt(storedFreezes) || 2);
+                if (storedLastCheck) setLastCheckDate(storedLastCheck);
+
+                // Esegui la sincronizzazione dello streak e dei freeze all'avvio
+                const todayStr = getLocalDateString(new Date());
+                handleStreakAndFreezeSync(
+                    storedHistory ? JSON.parse(storedHistory) : {},
+                    storedTasks ? JSON.parse(storedTasks) : [],
+                    parseInt(storedStreak) || 0,
+                    parseInt(storedFreezes) || 2,
+                    storedLastCheck || todayStr
+                );
+            }, []);
+
+            // Salvataggio automatico dello stato
+            const saveToStorage = (newTasks, newHistory, newStreak, newFreezes, newLastCheck) => {
+                localStorage.setItem('ht_tasks', JSON.stringify(newTasks));
+                localStorage.setItem('ht_history', JSON.stringify(newHistory));
+                localStorage.setItem('ht_streak', newStreak.toString());
+                localStorage.setItem('ht_freezes', newFreezes.toString());
+                localStorage.setItem('ht_last_check', newLastCheck);
+            };
+
+            // --- LOGICA DI CALCOLO AUTOMATICO DELLO STREAK E DELLO STREAK FREEZE ---
+            const handleStreakAndFreezeSync = (currentHistory, currentTasks, curStreak, curFreezes, lastCheck) => {
+                const today = new Date();
+                const todayStr = getLocalDateString(today);
+                
+                if (lastCheck === todayStr) return; // Già sincronizzato oggi
+
+                let updatedHistory = { ...currentHistory };
+                let tempStreak = curStreak;
+                let tempFreezes = curFreezes;
+
+                // Gestione del reset mensile dei Freeze (1° del mese)
+                const lastCheckDateObj = new Date(lastCheck);
+                if (today.getMonth() !== lastCheckDateObj.getMonth() || today.getFullYear() !== lastCheckDateObj.getFullYear()) {
+                    tempFreezes = 2; // Reset automatico dei freeze a inizio mese
+                }
+
+                // Generiamo la lista di giorni passati da verificare dall'ultimo controllo fino a ieri
+                let checkPointer = new Date(lastCheckDateObj);
+                checkPointer.setDate(checkPointer.getDate() + 1); // Partiamo dal giorno successivo all'ultimo controllo
+
+                const yesterday = new Date(today);
+                yesterday.setDate(yesterday.getDate() - 1);
+                const yesterdayStr = getLocalDateString(yesterday);
+
+                while (getLocalDateString(checkPointer) <= yesterdayStr) {
+                    const checkDayStr = getLocalDateString(checkPointer);
+                    const dayOfWeek = checkPointer.getDay() === 0 ? 7 : checkPointer.getDay(); // ISO Day
+
+                    // 1. Capire se c'erano task programmati per questo giorno specifico passato
+                    const tasksForDay = currentTasks.filter(t => 
+                        t.cadence === 'daily' || (t.cadence === 'weekly' && t.selectedDays.includes(dayOfWeek))
+                    );
+
+                    if (tasksForDay.length > 0) {
+                        // 2. Verificare se l'utente ha fatto almeno 1 task in quel giorno passato
+                        const dayEntry = updatedHistory[checkDayStr];
+                        const completions = dayEntry?.completions || {};
+                        const hasDoneAtLeastOne = Object.keys(completions).some(taskId => {
+                            const val = completions[taskId];
+                            return val > 0;
+                        });
+
+                        if (!hasDoneAtLeastOne) {
+                            // Se non ha fatto nulla, proviamo ad applicare lo STREAK FREEZE
+                            if (tempFreezes > 0) {
+                                tempFreezes -= 1;
+                                updatedHistory[checkDayStr] = {
+                                    ...dayEntry,
+                                    freezeUsed: true,
+                                    mood: dayEntry?.mood || '❄️',
+                                    note: dayEntry?.note || 'Streak congelata automaticamente!',
+                                    completions: completions
+                                };
+                                // Lo streak NON si resetta! Rimane invariato.
+                            } else {
+                                // Niente freeze rimasti: lo streak si azzera
+                                tempStreak = 0;
+                            }
+                        }
+                    }
+                    // Vai al giorno dopo
+                    checkPointer.setDate(checkPointer.getDate() + 1);
+                }
+
+                setHistory(updatedHistory);
+                setStreak(tempStreak);
+                setFreezesRemaining(tempFreezes);
+                setLastCheckDate(todayStr);
+                saveToStorage(currentTasks, updatedHistory, tempStreak, tempFreezes, todayStr);
+            };
+
+            // --- GESTIONE DEI GOALS / TASK ---
+            const handleAddGoal = () => {
+                if (!newGoalName.trim()) return;
+                const newGoal = {
+                    id: Date.now().toString(),
+                    name: newGoalName,
+                    type: newGoalType,
+                    cadence: newGoalCadence,
+                    selectedDays: newGoalCadence === 'weekly' ? selectedDays : [1,2,3,4,5,6,7]
+                };
+
+                const updatedTasks = [...tasks, newGoal];
+                setTasks(updatedTasks);
+                saveToStorage(updatedTasks, history, streak, freezesRemaining, lastCheckDate);
+                
+                // Reset form
+                setNewGoalName('');
+                setNewGoalType('binary');
+                setNewGoalCadence('daily');
+                setSelectedDays([1,2,3,4,5]);
+                setCurrentTab('oggi'); // Ritorna alla schermata principale
+            };
+
+            const handleDeleteGoal = (id) => {
+                if (confirm("Sei sicuro di voler eliminare questo habit?")) {
+                    const updatedTasks = tasks.filter(t => t.id !== id);
+                    setTasks(updatedTasks);
+                    saveToStorage(updatedTasks, history, streak, freezesRemaining, lastCheckDate);
+                }
+            };
+
+            // Toggle dei giorni settimanali nella creazione goal
+            const toggleDay = (dayNum) => {
+                if (selectedDays.includes(dayNum)) {
+                    setSelectedDays(selectedDays.filter(d => d !== dayNum));
+                } else {
+                    setSelectedDays([...selectedDays, dayNum].sort());
+                }
+            };
+
+            // --- COMPLETAMENTO TASK ---
+            const handleTaskUpdate = (taskId, value) => {
+                const todayStr = getLocalDateString(new Date());
+                const dayEntry = history[todayStr] || { mood: '', note: '', completions: {}, freezeUsed: false };
+                
+                const previousCompletions = { ...dayEntry.completions };
+                const updatedCompletions = { ...previousCompletions, [taskId]: value };
+                
+                const updatedDayEntry = {
+                    ...dayEntry,
+                    completions: updatedCompletions
+                };
+
+                const updatedHistory = {
+                    ...history,
+                    [todayStr]: updatedDayEntry
+                };
+
+                // Aggiornamento dello STREAK in tempo reale
+                // Se oggi è la prima volta che completiamo un task, aumentiamo lo streak.
+                const wasActiveTodayBefore = Object.values(previousCompletions).some(val => val > 0);
+                const isActiveNow = Object.values(updatedCompletions).some(val => val > 0);
+                
+                let newStreak = streak;
+                if (!wasActiveTodayBefore && isActiveNow) {
+                    newStreak = streak + 1; // Primo task completato oggi!
+                } else if (wasActiveTodayBefore && !isActiveNow) {
+                    newStreak = Math.max(0, streak - 1); // Se toglie l'unico completato, scende
+                }
+
+                setHistory(updatedHistory);
+                setStreak(newStreak);
+                saveToStorage(tasks, updatedHistory, newStreak, freezesRemaining, lastCheckDate);
+            };
+
+            // Aggiornamento Mood o Note di oggi
+            const handleDayMetadataUpdate = (field, value) => {
+                const todayStr = getLocalDateString(new Date());
+                const dayEntry = history[todayStr] || { mood: '', note: '', completions: {}, freezeUsed: false };
+
+                const updatedHistory = {
+                    ...history,
+                    [todayStr]: {
+                        ...dayEntry,
+                        [field]: value
+                    }
+                };
+                setHistory(updatedHistory);
+                saveToStorage(tasks, updatedHistory, streak, freezesRemaining, lastCheckDate);
+            };
+
+            // --- LOGICHE CALCOLO COMPLETAMENTO PER IL CALENDARIO ---
+            const getDayStatus = (dateStr, dayTasks) => {
+                const dayEntry = history[dateStr];
+                if (!dayEntry) return 'none';
+                if (dayEntry.freezeUsed) return 'freeze';
+
+                if (dayTasks.length === 0) return 'none';
+
+                const completions = dayEntry.completions || {};
+                let totalProgress = 0;
+
+                dayTasks.forEach(task => {
+                    const comp = completions[task.id] || 0;
+                    totalProgress += comp; // Comp è 0 o 1 per binary, 0-100 per progressive
+                });
+
+                const maxPossible = dayTasks.length * 100;
+                // Calcoliamo la percentuale reale di completamento di quel giorno
+                const actualProgress = dayTasks.reduce((acc, task) => {
+                    const comp = completions[task.id] || 0;
+                    return acc + (task.type === 'binary' ? comp * 100 : comp);
+                }, 0);
+
+                if (actualProgress === 0) return 'none';
+                if (actualProgress >= maxPossible) return 'completed';
+                return 'partial';
+            };
+
+            // Filtra i task attivi per un determinato giorno della settimana
+            const getTasksForDate = (date) => {
+                const dayOfWeek = date.getDay() === 0 ? 7 : date.getDay(); // ISO Day
+                return tasks.filter(t => 
+                    t.cadence === 'daily' || (t.cadence === 'weekly' && t.selectedDays.includes(dayOfWeek))
+                );
+            };
+
+            // --- RENDERING CALENDARIO ---
+            const calendarDays = useMemo(() => {
+                const today = new Date();
+                const year = today.getFullYear();
+                const month = today.getMonth(); // Mese corrente (0-11)
+                
+                const firstDayOfMonth = new Date(year, month, 1);
+                const lastDayOfMonth = new Date(year, month + 1, 0);
+                
+                const daysInMonth = lastDayOfMonth.getDate();
+                // Ottieni il giorno della settimana del primo giorno (0=Dom, 1=Lun) convertito in 1=Lun, 7=Dom
+                let startDayOfWeek = firstDayOfMonth.getDay();
+                if (startDayOfWeek === 0) startDayOfWeek = 7;
+
+                const days = [];
+                // Spazi vuoti per i giorni del mese precedente
+                for (let i = 1; i < startDayOfWeek; i++) {
+                    days.push(null);
+                }
+
+                // Giorni del mese corrente
+                for (let d = 1; d <= daysInMonth; d++) {
+                    const dateObj = new Date(year, month, d);
+                    const dateStr = getLocalDateString(dateObj);
+                    const dayTasks = getTasksForDate(dateObj);
+                    const status = getDayStatus(dateStr, dayTasks);
+                    
+                    days.push({
+                        dayNum: d,
+                        dateStr: dateStr,
+                        status: status,
+                        dayTasks: dayTasks,
+                        metadata: history[dateStr] || null
+                    });
+                }
+                return days;
+            }, [history, tasks]);
+
+            // Dati di oggi
+            const todayStr = getLocalDateString(new Date());
+            const todayTasks = getTasksForDate(new Date());
+            const todayMetadata = history[todayStr] || { mood: '', note: '', completions: {}, freezeUsed: false };
+
+            return (
+                <div class="min-h-screen flex flex-col max-w-md mx-auto shadow-2xl border-x border-slate-100" style={{ backgroundColor: THEME.bgApp }}>
+                    
+                    {/* --- HEADER --- */}
+                    <header class="p-4 flex items-center justify-between border-b border-slate-100 sticky top-0 z-10" style={{ backgroundColor: THEME.cardBg }}>
+                        <div class="flex items-center gap-2">
+                            <div class="w-8 h-8 rounded-lg flex items-center justify-center text-white" style={{ backgroundColor: THEME.primary }}>
+                                <Icon name="check-square" className="w-5 h-5" />
+                            </div>
+                            <span class="font-bold text-xl tracking-tight">HabitFlow</span>
+                        </div>
+                        
+                        {/* Widget Streak e Freeze */}
+                        <div class="flex items-center gap-3">
+                            <div class="flex items-center gap-1 bg-amber-50 text-amber-700 px-3 py-1.5 rounded-full border border-amber-100 text-sm font-bold shadow-sm">
+                                <span>🔥</span> {streak} {streak === 1 ? 'giorno' : 'giorni'}
+                            </div>
+                            <div class="flex items-center gap-1 bg-sky-50 text-sky-700 px-3 py-1.5 rounded-full border border-sky-100 text-sm font-bold shadow-sm" title="Streak Freeze rimasti per questo mese">
+                                <span>❄️</span> {freezesRemaining}
+                            </div>
+                        </div>
+                    </header>
+
+                    {/* --- CONTENUTO PRINCIPALE --- */}
+                    <main class="flex-1 overflow-y-auto p-4 pb-24">
+                        
+                        {/* SCHERMATA 1: OGGI */}
+                        {currentTab === 'oggi' && (
+                            <div class="space-y-6">
+                                {/* Post-it & Mood Section */}
+                                <div class="rounded-2xl p-5 shadow-sm border border-slate-100 relative overflow-hidden" style={{ backgroundColor: THEME.cardBg }}>
+                                    <div class="absolute top-0 left-0 w-full h-1.5" style={{ backgroundColor: THEME.primary }}></div>
+                                    <h3 class="font-bold text-lg mb-3">Come va oggi?</h3>
+                                    
+                                    {/* Mood Emojis */}
+                                    <div class="flex justify-between gap-2 mb-4">
+                                        {['😭', '😔', '😐', '😊', '🤩'].map(emoji => (
+                                            <button 
+                                                key={emoji}
+                                                onClick={() => handleDayMetadataUpdate('mood', emoji)}
+                                                class={`text-3xl p-2 rounded-xl transition-transform active:scale-95 ${todayMetadata.mood === emoji ? 'bg-indigo-50 border-2 border-indigo-200 scale-110' : 'hover:bg-slate-50 border-2 border-transparent'}`}
+                                            >
+                                                {emoji}
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    {/* Note Post-it */}
+                                    <textarea
+                                        placeholder="Scrivi un post-it sulla tua giornata..."
+                                        value={todayMetadata.note || ''}
+                                        onChange={(e) => handleDayMetadataUpdate('note', e.target.value)}
+                                        rows="2"
+                                        class="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-sm bg-amber-50/40 placeholder-slate-400"
+                                        style={{ borderStyle: 'dashed' }}
+                                    ></textarea>
+                                </div>
+
+                                {/* Lista Task di Oggi */}
+                                <div class="space-y-3">
+                                    <div class="flex justify-between items-center">
+                                        <h2 class="text-xl font-extrabold tracking-tight">I tuoi task di oggi</h2>
+                                        <span class="text-xs text-slate-400 font-medium">
+                                            {new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'short' })}
+                                        </span>
+                                    </div>
+
+                                    {todayTasks.length === 0 ? (
+                                        <div class="text-center p-8 rounded-2xl border-2 border-dashed border-slate-200 text-slate-400">
+                                            <Icon name="calendar-days" className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                                            <p class="font-medium text-sm">Nessun task programmato per oggi.</p>
+                                            <button onClick={() => setCurrentTab('goals')} class="text-xs mt-2 underline" style={{ color: THEME.primary }}>Crea un nuovo Habit</button>
+                                        </div>
+                                    ) : (
+                                        todayTasks.map(task => {
+                                            const isCompleted = (todayMetadata.completions?.[task.id] || 0) > 0;
+                                            const value = todayMetadata.completions?.[task.id] || 0;
+
+                                            return (
+                                                <div 
+                                                    key={task.id}
+                                                    class="rounded-xl p-4 shadow-sm border border-slate-100 transition-all flex flex-col gap-3"
+                                                    style={{ backgroundColor: THEME.cardBg }}
+                                                >
+                                                    <div class="flex items-center justify-between">
+                                                        <span class={`font-semibold text-base ${isCompleted ? 'text-slate-900' : 'text-slate-800'}`}>
+                                                            {task.name}
+                                                        </span>
+                                                        <span class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">
+                                                            {task.type === 'binary' ? 'Sì/No' : 'Progressivo'}
+                                                        </span>
+                                                    </div>
+
+                                                    {/* Task Binario (Checkbox) */}
+                                                    {task.type === 'binary' && (
+                                                        <button 
+                                                            onClick={() => handleTaskUpdate(task.id, value === 1 ? 0 : 1)}
+                                                            class="w-full flex items-center justify-between p-3 rounded-lg border transition-all active:scale-[0.99]"
+                                                            style={{ 
+                                                                borderColor: value === 1 ? THEME.colorCompleted : '#e2e8f0',
+                                                                backgroundColor: value === 1 ? `${THEME.colorCompleted}0d` : 'transparent'
+                                                            }}
+                                                        >
+                                                            <span class="text-sm font-medium" style={{ color: value === 1 ? THEME.colorCompleted : '#64748b' }}>
+                                                                {value === 1 ? 'Completato!' : 'Segna come completato'}
+                                                            </span>
+                                                            <div 
+                                                                class="w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all"
+                                                                style={{ 
+                                                                    borderColor: value === 1 ? THEME.colorCompleted : '#cbd5e1',
+                                                                    backgroundColor: value === 1 ? THEME.colorCompleted : 'transparent'
+                                                                }}
+                                                            >
+                                                                {value === 1 && <Icon name="check" className="w-4 h-4 text-white" />}
+                                                            </div>
+                                                        </button>
+                                                    )}
+
+                                                    {/* Task Progressivo (Slider) */}
+                                                    {task.type === 'progressive' && (
+                                                        <div class="space-y-2">
+                                                            <div class="flex justify-between items-center text-xs font-bold" style={{ color: value > 0 ? THEME.primary : '#64748b' }}>
+                                                                <span>Stato completamento</span>
+                                                                <span>{value}%</span>
+                                                            </div>
+                                                            <input 
+                                                                type="range" 
+                                                                min="0" 
+                                                                max="100" 
+                                                                step="5"
+                                                                value={value}
+                                                                onChange={(e) => handleTaskUpdate(task.id, parseInt(e.target.value))}
+                                                                class="w-full h-2 rounded-lg bg-slate-100 appearance-none cursor-pointer accent-indigo-500"
+                                                                style={{ accentColor: THEME.primary }}
+                                                            />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* SCHERMATA 2: STORICO / CALENDARIO */}
+                        {currentTab === 'storico' && (
+                            <div class="space-y-6">
+                                <div class="rounded-2xl p-4 shadow-sm border border-slate-100" style={{ backgroundColor: THEME.cardBg }}>
+                                    <h2 class="text-lg font-bold mb-4 text-center">
+                                        {new Date().toLocaleDateString('it-IT', { month: 'long', year: 'numeric' }).toUpperCase()}
+                                    </h2>
+
+                                    {/* Giorni della settimana intestazione */}
+                                    <div class="grid grid-cols-7 text-center text-xs font-bold text-slate-400 mb-2">
+                                        <div>L</div><div>M</div><div>M</div><div>G</div><div>V</div><div>S</div><div>D</div>
+                                    </div>
+
+                                    {/* Griglia giorni */}
+                                    <div class="grid grid-cols-7 gap-y-3 gap-x-1">
+                                        {calendarDays.map((day, idx) => {
+                                            if (!day) return <div key={`empty-${idx}`}></div>;
+
+                                            // Colore cerchio in base allo stato
+                                            let borderStyle = {};
+                                            let bgStyle = "text-slate-700";
+
+                                            if (day.status === 'completed') {
+                                                borderStyle = { borderColor: THEME.colorCompleted, borderWidth: '2px' };
+                                                bgStyle = "font-bold";
+                                            } else if (day.status === 'partial') {
+                                                borderStyle = { borderColor: THEME.colorPartial, borderWidth: '2px' };
+                                                bgStyle = "font-bold";
+                                            } else if (day.status === 'freeze') {
+                                                borderStyle = { borderColor: THEME.colorFreeze, borderWidth: '2px', backgroundColor: `${THEME.colorFreeze}15` };
+                                                bgStyle = "font-bold";
+                                            }
+
+                                            return (
+                                                <button
+                                                    key={day.dateStr}
+                                                    onClick={() => setSelectedHistoryDay(day)}
+                                                    class="aspect-square flex flex-col items-center justify-center relative rounded-full transition-all hover:bg-slate-50 active:scale-95 mx-auto w-10 h-10"
+                                                    style={borderStyle}
+                                                >
+                                                    <span class={`text-sm ${bgStyle}`}>{day.dayNum}</span>
+                                                    {day.metadata?.mood && (
+                                                        <span class="absolute -bottom-1 text-[8px]">{day.metadata.mood}</span>
+                                                    )}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                {/* Legenda */}
+                                <div class="flex justify-between items-center text-xs px-2 text-slate-500">
+                                    <div class="flex items-center gap-1">
+                                        <div class="w-3 h-3 rounded-full border-2" style={{ borderColor: THEME.colorCompleted }}></div>
+                                        <span>Fatto</span>
+                                    </div>
+                                    <div class="flex items-center gap-1">
+                                        <div class="w-3 h-3 rounded-full border-2" style={{ borderColor: THEME.colorPartial }}></div>
+                                        <span>Parziale</span>
+                                    </div>
+                                    <div class="flex items-center gap-1">
+                                        <div class="w-3 h-3 rounded-full border-2 bg-sky-50" style={{ borderColor: THEME.colorFreeze }}></div>
+                                        <span>Freeze</span>
+                                    </div>
+                                </div>
+
+                                {/* MODAL DETTAGLIO GIORNO SELEZIONATO */}
+                                {selectedHistoryDay && (
+                                    <div class="rounded-2xl p-5 shadow-sm border border-slate-100 space-y-4" style={{ backgroundColor: THEME.cardBg }}>
+                                        <div class="flex justify-between items-start">
+                                            <div>
+                                                <h3 class="font-extrabold text-lg">Dettaglio Giorno</h3>
+                                                <p class="text-xs text-slate-400">
+                                                    {new Date(selectedHistoryDay.dateStr).toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })}
+                                                </p>
+                                            </div>
+                                            <button 
+                                                onClick={() => setSelectedHistoryDay(null)}
+                                                class="text-slate-400 hover:text-slate-600 p-1"
+                                            >
+                                                <Icon name="x" className="w-5 h-5" />
+                                            </button>
+                                        </div>
+
+                                        {/* Stato Umore e Post-it */}
+                                        <div class="bg-slate-50 p-3 rounded-xl space-y-2">
+                                            <div class="flex items-center gap-2">
+                                                <span class="text-sm font-semibold text-slate-500">Umore:</span>
+                                                <span class="text-xl">{selectedHistoryDay.metadata?.mood || 'Nessuno inserito'}</span>
+                                            </div>
+                                            <div class="border-t border-slate-200/60 pt-2">
+                                                <span class="text-xs font-semibold text-slate-400 block mb-1">Post-it di quel giorno:</span>
+                                                <p class="text-sm italic text-slate-700 bg-amber-50/50 p-2 rounded border border-dashed border-slate-200">
+                                                    {selectedHistoryDay.metadata?.note || "Nessuna nota per oggi."}
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {/* Lista dei task completati/non completati */}
+                                        <div>
+                                            <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Completamento Task</h4>
+                                            {selectedHistoryDay.dayTasks.length === 0 ? (
+                                                <p class="text-xs text-slate-500">Nessun task pianificato per questa giornata.</p>
+                                            ) : (
+                                                <div class="space-y-2">
+                                                    {selectedHistoryDay.dayTasks.map(task => {
+                                                        const value = selectedHistoryDay.metadata?.completions?.[task.id] || 0;
+                                                        const isDone = value > 0;
+
+                                                        return (
+                                                            <div key={task.id} class="flex items-center justify-between text-sm p-2 rounded-lg bg-slate-50/50 border border-slate-100">
+                                                                <span class="font-medium text-slate-700">{task.name}</span>
+                                                                <div class="flex items-center gap-2">
+                                                                    <span class="text-xs text-slate-500">
+                                                                        {task.type === 'binary' ? (isDone ? 'Sì' : 'No') : `${value}%`}
+                                                                    </span>
+                                                                    <div class={`w-4.5 h-4.5 rounded-full flex items-center justify-center text-white ${isDone ? 'bg-emerald-500' : 'bg-slate-200'}`}>
+                                                                        {isDone ? <Icon name="check" className="w-3 h-3" /> : <Icon name="x" className="w-3 h-3" />}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* SCHERMATA 3: CREAZIONE & GESTIONE GOALS */}
+                        {currentTab === 'goals' && (
+                            <div class="space-y-6">
+                                {/* Form Aggiungi Goal */}
+                                <div class="rounded-2xl p-5 shadow-sm border border-slate-100 space-y-4" style={{ backgroundColor: THEME.cardBg }}>
+                                    <h2 class="text-xl font-bold tracking-tight mb-2">Aggiungi un nuovo Goal</h2>
+                                    
+                                    {/* Nome */}
+                                    <div class="space-y-1">
+                                        <label class="text-xs font-bold text-slate-500 uppercase">Nome dell'abitudine</label>
+                                        <input 
+                                            type="text" 
+                                            placeholder="Es. Bere 2 litri d'acqua, Allenamento..."
+                                            value={newGoalName}
+                                            onChange={(e) => setNewGoalName(e.target.value)}
+                                            class="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-sm"
+                                        />
+                                    </div>
+
+                                    {/* Tipo di Task */}
+                                    <div class="space-y-1">
+                                        <label class="text-xs font-bold text-slate-500 uppercase">Tipologia</label>
+                                        <div class="grid grid-cols-2 gap-2">
+                                            <button 
+                                                onClick={() => setNewGoalType('binary')}
+                                                class={`p-3 rounded-xl text-sm font-semibold border transition-all ${newGoalType === 'binary' ? 'border-indigo-500 bg-indigo-50/50 text-indigo-700' : 'border-slate-200 hover:bg-slate-50'}`}
+                                            >
+                                                Sì / No (Semplice)
+                                            </button>
+                                            <button 
+                                                onClick={() => setNewGoalType('progressive')}
+                                                class={`p-3 rounded-xl text-sm font-semibold border transition-all ${newGoalType === 'progressive' ? 'border-indigo-500 bg-indigo-50/50 text-indigo-700' : 'border-slate-200 hover:bg-slate-50'}`}
+                                            >
+                                                Progressivo (%)
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Cadenza */}
+                                    <div class="space-y-1">
+                                        <label class="text-xs font-bold text-slate-500 uppercase">Cadenza</label>
+                                        <div class="grid grid-cols-2 gap-2">
+                                            <button 
+                                                onClick={() => setNewGoalCadence('daily')}
+                                                class={`p-3 rounded-xl text-sm font-semibold border transition-all ${newGoalCadence === 'daily' ? 'border-indigo-500 bg-indigo-50/50 text-indigo-700' : 'border-slate-200 hover:bg-slate-50'}`}
+                                            >
+                                                Tutti i giorni
+                                            </button>
+                                            <button 
+                                                onClick={() => setNewGoalCadence('weekly')}
+                                                class={`p-3 rounded-xl text-sm font-semibold border transition-all ${newGoalCadence === 'weekly' ? 'border-indigo-500 bg-indigo-50/50 text-indigo-700' : 'border-slate-200 hover:bg-slate-50'}`}
+                                            >
+                                                Giorni specifici
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Giorni specifici se settimanale */}
+                                    {newGoalCadence === 'weekly' && (
+                                        <div class="space-y-2 animate-fadeIn">
+                                            <label class="text-xs font-bold text-slate-500 uppercase">Seleziona i giorni di attività</label>
+                                            <div class="flex justify-between gap-1">
+                                                {['L', 'M', 'M', 'G', 'V', 'S', 'D'].map((dayName, index) => {
+                                                    const dayNum = index + 1;
+                                                    const isSelected = selectedDays.includes(dayNum);
+                                                    return (
+                                                        <button
+                                                            key={dayNum}
+                                                            type="button"
+                                                            onClick={() => toggleDay(dayNum)}
+                                                            class={`w-10 h-10 rounded-full text-xs font-bold transition-all ${isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}
+                                                        >
+                                                            {dayName}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Bottone Salva */}
+                                    <button 
+                                        onClick={handleAddGoal}
+                                        class="w-full py-3.5 rounded-xl font-bold text-white shadow-lg active:scale-95 transition-all text-sm"
+                                        style={{ backgroundColor: THEME.primary }}
+                                    >
+                                        Crea Habit
+                                    </button>
+                                </div>
+
+                                {/* Lista Gestione Goal Esistenti */}
+                                <div class="space-y-3">
+                                    <h2 class="text-lg font-bold tracking-tight">I miei Goal attivi ({tasks.length})</h2>
+                                    {tasks.length === 0 ? (
+                                        <p class="text-sm text-slate-400 italic">Non hai ancora creato nessun goal.</p>
+                                    ) : (
+                                        <div class="space-y-2.5">
+                                            {tasks.map(task => (
+                                                <div 
+                                                    key={task.id} 
+                                                    class="p-4 rounded-xl shadow-sm border border-slate-100 flex items-center justify-between"
+                                                    style={{ backgroundColor: THEME.cardBg }}
+                                                >
+                                                    <div>
+                                                        <h4 class="font-bold text-sm text-slate-800">{task.name}</h4>
+                                                        <p class="text-[11px] text-slate-400 font-medium">
+                                                            {task.cadence === 'daily' ? 'Ogni giorno' : `Giorni specifici (es. ${task.selectedDays.map(d => ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'][d-1]).join(', ')})`}
+                                                        </p>
+                                                    </div>
+                                                    <button 
+                                                        onClick={() => handleDeleteGoal(task.id)}
+                                                        class="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
+                                                    >
+                                                        <Icon name="trash-2" className="w-5 h-5" />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                    </main>
+
+                    {/* --- NAVBAR FOOTER (Mobile Sticky) --- */}
+                    <nav class="border-t border-slate-100 p-3 flex justify-around items-center fixed bottom-0 left-0 right-0 max-w-md mx-auto z-10" style={{ backgroundColor: THEME.cardBg }}>
+                        <button 
+                            onClick={() => setCurrentTab('oggi')}
+                            class="flex flex-col items-center gap-1 p-2 rounded-xl transition-all"
+                            style={{ color: currentTab === 'oggi' ? THEME.primary : '#94a3b8' }}
+                        >
+                            <Icon name="check-square" className="w-6 h-6" />
+                            <span class="text-[10px] font-bold">Oggi</span>
+                        </button>
+                        
+                        <button 
+                            onClick={() => setCurrentTab('storico')}
+                            class="flex flex-col items-center gap-1 p-2 rounded-xl transition-all"
+                            style={{ color: currentTab === 'storico' ? THEME.primary : '#94a3b8' }}
+                        >
+                            <Icon name="calendar" className="w-6 h-6" />
+                            <span class="text-[10px] font-bold">Storico</span>
+                        </button>
+                        
+                        <button 
+                            onClick={() => setCurrentTab('goals')}
+                            class="flex flex-col items-center gap-1 p-2 rounded-xl transition-all"
+                            style={{ color: currentTab === 'goals' ? THEME.primary : '#94a3b8' }}
+                        >
+                            <Icon name="plus-circle" className="w-6 h-6" />
+                            <span class="text-[10px] font-bold">Gestisci</span>
+                        </button>
+                    </nav>
+
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+
+</body></html>
